@@ -16,9 +16,13 @@ const common = {
   legalComments: 'none',
 };
 
-async function copyHtml() {
-  const html = readFileSync('index.html', 'utf8');
+async function copyHtml(dev) {
+  const html = readFileSync('index.html', 'utf8').replace(
+    dev ? /src="\/src\/main\.js"/ : /src="\/src\/main\.js"/,
+    dev ? 'src="/src/main.js"' : 'src="game.js"',
+  );
   writeFileSync('dist/index.html', html);
+  writeFileSync('dist/style.css', readFileSync('style.css', 'utf8'));
 }
 
 if (serve) {
@@ -28,10 +32,10 @@ if (serve) {
 } else if (watch) {
   const ctx = await esbuild.context(common);
   await ctx.watch();
-  copyHtml();
+  copyHtml(false);
   console.log('watching…');
 } else {
   await esbuild.build(common);
-  copyHtml();
+  copyHtml(false);
   console.log('built dist/');
 }

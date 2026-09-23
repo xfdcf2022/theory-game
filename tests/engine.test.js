@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Game } from '../src/engine.js';
 import { startingDeck, CONCEPT_CARDS, RELICS, ENEMIES } from '../src/data.js';
+import { buyPrice, cardMV } from '../src/economy.js';
 
 function game(school = 'mao', enemy = { ...ENEMIES[0] }, relics = []) {
   const deck = startingDeck(school);
@@ -27,7 +28,7 @@ describe('Game · 基础规则', () => {
   it('打攻击牌造成伤害并扣除非能量', () => {
     const g = game();
     const hp0 = g.enemy.hp;
-    const q = g.hand[0];
+    const q = g.hand.find((c) => (c.atk || 0) >= 5) || g.hand[0];
     g.player.energy = 3;
     const res = g.playCard(q);
     expect(res.ok).toBe(true);
@@ -120,9 +121,14 @@ describe('Game · 遗物与组合技', () => {
     expect(r.dealt).toBeGreaterThanOrEqual(24); // 3*8
   });
 
-  it('找书方法论遗物使合题费用打折（归档点减少）由 UI 层处理', () => {
-    // 引擎不涉及档案点；这里仅验证遗物数据结构完整
-    expect(RELICS.find((r) => r.id === 'zhao_shu').effect.synthDiscount).toBe(0.3);
+  it('找书方法论遗物使商店价打折（economy.buyPrice 处理）', () => {
+    const zhao = RELICS.find((r) => r.id === 'zhao_shu');
+    expect(zhao.effect.shopDiscount).toBe(0.3);
+    const card = CONCEPT_CARDS[0];
+    const base = buyPrice(card, []);
+    const disc = buyPrice(card, [zhao]);
+    expect(disc).toBeLessThan(base);
+    expect(cardMV(card)).toBeGreaterThan(0);
   });
 });
 
