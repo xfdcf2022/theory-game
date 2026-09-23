@@ -1,0 +1,17 @@
+{
+  "name": "theory-game",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "理论牌组 Theory Deck - v0.10 设计的第一版切片实现",
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "dev": "node esbuild.mjs --serve",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "vitest": "^4.1.11"
+  }
+}
