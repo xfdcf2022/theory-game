@@ -351,6 +351,34 @@ export const EVENTS = [
   },
 ];
 
+// ---- 引导局教学事件链（Act 1，固定序，教：出题/代价结构/连锁后果）----
+export const TEACH_EVENTS = [
+  {
+    id: 'ev_teach0', act: 1, teach: '题', title: '教·怎样提出一个好问题',
+    text: '群中有人抛出旧论点，你要先学会「提问」：不预设答案，只把对方的论证前提亮出来。',
+    options: [
+      { text: '问「你凭什么这样断言？」', reward: { archive: 4 }, note: '一个直问打开话题，档案 +4。' },
+      { text: '问「这个结论从什么前提推出？」', reward: { concept: true }, note: '更深的问题带来一张概念牌。' },
+    ],
+  },
+  {
+    id: 'ev_teach1', act: 1, teach: '代价', title: '教·代价结构',
+    text: '反驳是要付代价的：档案点不总能抵消学识消耗，别把每一座桥都烧掉。',
+    options: [
+      { text: '全力反驳（代价大收益大）', hpCost: 4, reward: { archive: 8 }, note: '你赚到了档案，也微微受损。' },
+      { text: '先记笔记（代价小收益小）', reward: { archive: 2 }, note: '稳健的一步，档案 +2。' },
+    ],
+  },
+  {
+    id: 'ev_teach2', act: 1, teach: '连锁', title: '教·连锁后果',
+    text: '每一个反驳都会留下余波：连锁越多，后面的引用越锋利，但也可能误伤语境。',
+    options: [
+      { text: '顺着连锁加力打', reward: { archive: 6, insight: 2 }, note: '你尝到了连锁的甜头。' },
+      { text: '先停一下，收住势头', reward: { heal: 6 }, note: '你保全了体力。' },
+    ],
+  },
+];
+
 // ---- 节点类型说明（地图用）----
 export const NODE_KINDS = {
   combat: { label: '入库战', color: '#c0392b', desc: '驳倒旧论点（3 选 1 遗物）' },

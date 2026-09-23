@@ -1,4 +1,4 @@
-import { SCHOOLS, CONCEPT_CARDS, RELICS, ACTS, BOOKS, EVENTS, ENEMIES, actEnemies, NODE_KINDS } from './data.js';
+import { SCHOOLS, CONCEPT_CARDS, RELICS, ACTS, BOOKS, EVENTS, ENEMIES, actEnemies, NODE_KINDS, TEACH_EVENTS } from './data.js';
 import { Game } from './engine.js';
 import { Run } from './run.js';
 import { Save } from './save.js';
@@ -121,7 +121,196 @@ function startRun(school, mode, isGuide = false) {
   state.colIndex = 0;
   state.run.act = 1;
   state.run.map = state.run.genMap(1);
+  if (isGuide) { renderAct0Intro(); return; }
   renderMap();
+}
+
+// ========= Act 0 教学幕：三式教学 + 迷你节点网 =========
+function renderAct0Intro() {
+  screen().replaceChildren(
+    el('div', { class: 'end-screen' },
+      el('h2', { text: '教学幕 · Act 0' }),
+      el('p', { class: 'info', text: '进入正式研究前，先学会三件事：精读、合题、总结。全程无失败，10 分钟上手。' }),
+      el('div', { class: 'row', style: 'margin-top:14px' },
+        el('button', { class: 'btn-primary', onclick: renderAct0Read }, '开始三式教学'),
+      ),
+    ),
+  );
+}
+
+function renderAct0Read() {
+  const r = state.run;
+  screen().replaceChildren(
+    el('div', { class: 'end-screen' },
+      el('h2', { text: '第一式 · 精读（读一本书）' }),
+      el('p', { class: 'info', text: '花 1 档案点精读一本旧书，抽 1 张本派系概念牌。概念牌是你自己的武器。' }),
+      el('p', { class: 'info', text: `（当前档案点 ${r.archivePoints}，本局已获 1 张概念牌「真实裁判」）` }),
+      el('div', { class: 'row', style: 'margin-top:14px' },
+        el('button', { class: 'btn-primary', onclick: doAct0Read }, '精读一本'),
+      ),
+    ),
+  );
+}
+
+function doAct0Read() {
+  const r = state.run;
+  const res = internalizeRead({
+    archivePoints: r.archivePoints + 10,
+    school: r.school,
+    ownedIds: r.acquired.map((c) => c.id),
+    conceptPool: CONCEPT_CARDS,
+    mod: {},
+  });
+  // 教学幕：档案点足够，必成功
+  if (res.ok) {
+    r.archivePoints += 10 - res.cost;
+    r.acquired.push(res.card);
+    r.internalDone.push(`read_${res.card.id}`);
+    r.triggeredNodes.push(`read_${res.card.id}`);
+    pushLog(res.note, 'good');
+    state._act0 = { read: res.card };
+  }
+  renderAct0Synthesize();
+}
+
+function renderAct0Synthesize() {
+  const r = state.run;
+  const pool = r.acquired.filter((c) => !c.merged && (c.school === r.school || c.school === 'common') && c.id !== 'methodology_upgrade');
+  let candidatesText = '';
+  if (pool.length >= 2) {
+    const [a, b] = [pool[0], pool[1]];
+    candidatesText = `本局已获：${pool.map((c) => c.name).join('、')} → 教学用「${a.name}×${b.name}」合题`;
+    state._act0 = { ...(state._act0 || {}), pair: [a, b] };
+  } else {
+    candidatesText = '本局牌不足 2 张，暂演示合题结构（正式玩法中选任意 2 张旧牌）。';
+  }
+  screen().replaceChildren(
+    el('div', { class: 'end-screen' },
+      el('h2', { text: '第二式 · 合题（把旧牌拧成新牌）' }),
+      el('p', { class: 'info', text: '合题：用 2 张互斥旧牌 + 1 档案点，合成一张更强的进阶牌。' }),
+      el('p', { class: 'info', text: candidatesText }),
+      el('div', { class: 'row', style: 'margin-top:14px' },
+        el('button', { class: 'btn-primary', onclick: doAct0Synthesize }, '确定合题'),
+      ),
+    ),
+  );
+}
+
+function doAct0Synthesize() {
+  const r = state.run;
+  const pair = (state._act0 || {}).pair;
+  const res = pair && pair.length === 2
+    ? internalizeSynthesis({ archivePoints: r.archivePoints + 1, acquired: r.acquired, mod: {}, relic: null }, pair)
+    : null;
+  if (res && res.ok) {
+    r.acquired = r.acquired.filter((c) => c.id !== pair[0].id && c.id !== pair[1].id);
+    r.acquired.push(res.merged);
+    r.archivePoints -= res.cost;
+    r.internalDone.push(`synth_${res.merged.id}`);
+    r.triggeredNodes.push(`synth_${res.merged.id}`);
+    pushLog(`合题成功：「${res.merged.name}」`, 'good');
+  } else {
+    pushLog('教学演示：暂以单张牌代合成（正式玩法需 2 张）。', 'me');
+  }
+  renderAct0Summary();
+}
+
+function renderAct0Summary() {
+  const r = state.run;
+  const need = state._act0?.read ? 1 : 0;
+  screen().replaceChildren(
+    el('div', { class: 'end-screen' },
+      el('h2', { text: '第三式 · 总结（写下来才算数）' }),
+      el('p', { class: 'info', text: `总结需要前置「已读」（当前已精读 ${need} 本）。完成总结 +10 洞察，也是史料纵贯线的一环。` }),
+      el('div', { class: 'row', style: 'margin-top:14px' },
+        el('button', { class: 'btn-primary', onclick: doAct0Summary }, '写下总结'),
+      ),
+    ),
+  );
+}
+
+function doAct0Summary() {
+  const r = state.run;
+  const res = internalizeSummary({ readCount: state._act0?.read ? 1 : 0, mod: {}, archive: r.internalDone.filter((x) => x.startsWith('sum_')).length });
+  if (res.ok) {
+    r.insight += res.insight;
+    r.internalDone.push(`sum_${r.act}`);
+    r.triggeredNodes.push(`sum_${r.act}`);
+    pushLog(res.note, 'good');
+  }
+  renderAct0MiniIntro();
+}
+
+function renderAct0MiniIntro() {
+  screen().replaceChildren(
+    el('div', { class: 'end-screen' },
+      el('h2', { text: '迷你节点网 · 首次决策' }),
+      el('p', { class: 'info', text: '这就是正式局的缩影：从左到右，你会在「战斗 / 事件 / 内化」间选择。先打一场教学战熟悉牌组。' }),
+      el('div', { class: 'row', style: 'margin-top:14px' },
+        el('button', { class: 'btn-primary', onclick: () => { state._act0 = state._act0 || {}; state._act0.stage = 'battle1'; launchBattle('combat', { act0: true }); } }, '进入第一场教学战'),
+      ),
+    ),
+  );
+}
+
+function renderAct0Event() {
+  // 迷你网事件：取引导局教学链第 1 个（教出题）
+  renderEvent(null);
+}
+
+function renderAct0MiniInternal() {
+  screen().replaceChildren(
+    el('div', { class: 'end-screen' },
+      el('h2', { text: '内化三选一 · 多轨取舍' }),
+      el('p', { class: 'info', text: '这是正式局里常见的抉择：你这一步想把时间花在哪条轨上？' }),
+      el('div', { class: 'reward-list' },
+        el('div', { class: 'relic-item', onclick: () => finishAct0Mini('精读 · 补概念牌') },
+          el('strong', { text: '精读' }),
+          el('p', { class: 'info', text: '抽 1 张本派系概念牌（档案点 -1）' }),
+        ),
+        el('div', { class: 'relic-item', onclick: () => finishAct0Mini('合题 · 强化牌组') },
+          el('strong', { text: '合题' }),
+          el('p', { class: 'info', text: '2 张旧牌 + 1 档案点 → 进阶牌' }),
+        ),
+        el('div', { class: 'relic-item', onclick: () => finishAct0Mini('总结 · 换洞察') },
+          el('strong', { text: '总结' }),
+          el('p', { class: 'info', text: '需已精读前置，+10 洞察（史料纵贯线一环）' }),
+        ),
+      ),
+      el('div', { class: 'row', style: 'margin-top:14px' },
+        el('button', { class: 'btn-primary', onclick: () => { state._act0 = state._act0 || {}; state._act0.stage = 'battle2'; launchBattle('combat', { act0: true }); } }, '打完这场教学战，进入正式局'),
+      ),
+    ),
+  );
+}
+
+function finishAct0Mini(choice) {
+  const r = state.run;
+  if (choice.startsWith('精读')) {
+    const res = internalizeRead({
+      archivePoints: r.archivePoints + 1, school: r.school,
+      ownedIds: r.acquired.map((c) => c.id), conceptPool: CONCEPT_CARDS, mod: {},
+    });
+    if (res.ok) { r.acquired.push(res.card); r.internalDone.push(`read_${res.card.id}`); r.triggeredNodes.push(`read_${res.card.id}`); pushLog(res.note, 'good'); }
+  } else if (choice.startsWith('合题')) {
+    const pool = r.acquired.filter((c) => !c.merged && c.school === r.school);
+    if (pool.length >= 2) {
+      const pair = pool.slice(0, 2);
+      const res = internalizeSynthesis({ archivePoints: r.archivePoints + 1, acquired: r.acquired, mod: {}, relic: null }, pair);
+      if (res.ok) {
+        r.acquired = r.acquired.filter((c) => !pair.some((p) => p.id === c.id));
+        r.acquired.push(res.merged);
+        r.internalDone.push(`synth_${res.merged.id}`);
+        r.triggeredNodes.push(`synth_${res.merged.id}`);
+        pushLog(`合题成功：「${res.merged.name}」`, 'good');
+      }
+    } else pushLog('合题需 2 张本派系旧牌，当前不足，先略过。', 'enemy');
+  } else if (choice.startsWith('总结')) {
+    const readN = r.internalDone.filter((x) => x.startsWith('read_')).length;
+    const res = internalizeSummary({ readCount: readN, mod: {}, archive: r.internalDone.filter((x) => x.startsWith('sum_')).length });
+    if (res.ok) { r.insight += res.insight; r.internalDone.push(`sum_${r.act}`); r.triggeredNodes.push(`sum_${r.act}`); pushLog(res.note, 'good'); }
+    else pushLog('总结需先精读至少 1 本（教学中可回内化轨补）。', 'enemy');
+  }
 }
 
 function renderMap() {
@@ -196,15 +385,19 @@ function renderNodeScreen(node) {
 }
 
 // ========= 战斗 =========
-function launchBattle(kind) {
+function launchBattle(kind, opts = {}) {
   const r = state.run;
   const enemy = kind === 'elite' ? actEnemies(r.act, 'elite')
     : kind === 'boss' ? actEnemies(r.act, 'boss')
     : actEnemies(r.act, 'combat');
-  const mod = ACTS[r.act - 1].mod;
+  // Act 0 教学战：弱化敌人，保证 10 分钟内可通、无失败压力
+  if (opts.act0) { enemy.maxHp = Math.min(enemy.maxHp, 20); enemy.hp = enemy.maxHp; enemy.intents = [{ name: '抛出旧论点', dmg: 4 }]; }
+  const mod = opts.act0 ? {} : ACTS[r.act - 1].mod;
   const g = new Game({ school: r.school, deckCards: r.buildDeck(), enemy, relics: r.relics, mod });
   g.onLog = (t, k) => pushLog(t, k);
   state.game = g;
+  state._act0 = state._act0 || {};
+  if (opts.act0) state._act0.stage = state._act0.stage || 'battle1';
   renderBattle(enemy, kind);
 }
 
@@ -360,6 +553,15 @@ function onBattleWon() {
   );
   screen().replaceChildren(w);
 
+  // Act 0 迷你节点网流程：战1 → 事件 → 战2 → 三选一内化 → 正式五幕
+  if (state._act0?.stage === 'battle1') { state._act0.stage = 'event'; setTimeout(renderAct0Event, 700); return; }
+  if (state._act0?.stage === 'battle2') {
+    state._act0.stage = 'done';
+    pushLog('教学幕完成，进入正式五幕。', 'good');
+    setTimeout(() => { state.colIndex = 0; state.run.act = 1; state.run.map = state.run.genMap(1); renderMap(); }, 700);
+    return;
+  }
+
   if (rank === 'Boss') {
     // 每幕 Boss：过幕 + 触发
     r.triggeredNodes.push(`act${r.act}_boss`);
@@ -440,6 +642,8 @@ function pickRelic(rc) {
 }
 
 function advanceAfterNode() {
+  // Act 0 教学幕：事件结算后进入三选一内化屏
+  if (state._act0?.stage === 'event') { renderAct0MiniInternal(); return; }
   const r = state.run;
   if (state.colIndex >= r.map.length - 1) {
     // 已到 Boss 列前 → 本幕 Boss 待打（列 4）
@@ -510,8 +714,16 @@ function finishRunConcede(insight) {
 // ========= 屏幕：事件 =========
 function renderEvent(node) {
   const r = state.run;
-  const pool = EVENTS.filter((ev) => !r.eventsSettled.includes(ev.id) && (ev.act ?? 99) >= r.act);
-  const ev = pool.length ? pool[Math.floor(Math.random() * pool.length)] : EVENTS[0];
+  let ev = null;
+  if (r.isGuide) {
+    // 引导局：按顺序走教学事件链（教：出题/代价结构/连锁后果）
+    const done = r.eventsSettled.filter((id) => TEACH_EVENTS.some((t) => t.id === id));
+    ev = TEACH_EVENTS.find((t) => !done.some((d) => d === t.id)) || null;
+  }
+  if (!ev) {
+    const pool = EVENTS.filter((e) => !r.eventsSettled.includes(e.id) && (e.act ?? 99) >= r.act);
+    ev = pool.length ? pool[Math.floor(Math.random() * pool.length)] : EVENTS[0];
+  }
   if (ev) r.eventsSettled.push(ev.id);
   state._ev = ev;
 
